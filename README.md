@@ -1,0 +1,2 @@
+# Implementation-of-handwritten-digit-recognition-algorithm-using-deep-Learning-method
+This paper implements a handwritten digit recognition algorithm based on deep learning. On the basis of the completion of the basic algorithm, ① this project adds a progress bar of training, ② calls gpu for training, ③ saves the latest training weight, ④ draws the change curve of loss and accuracy in the training process in real time, the code notes are detailed, the structure is simple, and if you have any problems, please leave a message.
