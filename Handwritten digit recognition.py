@@ -7,6 +7,7 @@ import time
 from tqdm import tqdm
 from torchvision import datasets, transforms
 from torch.autograd import Variable
+import numpy as np
 
 # 调用GPU进行训练
 # Using gpu to train
@@ -70,6 +71,25 @@ plt.imshow(img)
 
 # 输入输出相同
 
+
+# 获取模型的参数量
+
+def getModelSize(model):
+    param_size = 0
+    param_sum = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+        param_sum += param.nelement()
+    buffer_size = 0
+    buffer_sum = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+        buffer_sum += buffer.nelement()
+    all_size = (param_size + buffer_size) / 1024 / 1024
+    print('模型总大小为：{:.3f}MB'.format(all_size))
+    return (param_size, param_sum, buffer_size, buffer_sum, all_size)
+
+# SE注意力机制
 class SElayer(torch.nn.Module):
     def __init__(self, channel, reduction=16):
         super(SElayer,self).__init__()
@@ -126,20 +146,39 @@ class Model(torch.nn.Module):
     def forward(self,x):
         out = self.conv1(x)
         out = Variable(out)
-
         out = self.se(out)
         # 对参数实现扁平化
         # 不扁平化会使得全连接层的实际输出的参数维度和其定义输入的维度将不匹配，程序会报错
         out = out.view(-1,14*14*128)
         # 进行最后的分类
         out = self.dense(out)
-
         return out
 
-#模型的训练和参数优化
+# 模型的训练和参数优化
 n_in = 1
 n_out = 64
+
+# 模型的加载
 model = Model(n_in,n_out).to(device)
+
+
+# 获取模型的参数量
+getModelSize(model)
+
+
+# # 加载预训练权重
+#
+# # 第一步：读取当前模型参数
+# model_dict = model.state_dict()
+# # 第二步：读取预训练模型
+# pretrained_dict = torch.load("D:/Handwritten digit recognition/model.pth", map_location = device)
+# pretrained_dict = {k: v for k, v in pretrained_dict.items() if np.shape(model_dict[k]) == np.shape(v)}
+# # 第三步：使用预训练的模型更新当前模型参数
+# model_dict.update(pretrained_dict)
+# # 第四步：加载模型参数
+# model.load_state_dict(model_dict)
+
+
 # 计算损失值的损失函数用的是交叉熵
 cost = torch.nn.CrossEntropyLoss()
 cost = cost.to(device)
@@ -158,7 +197,10 @@ for epoch in range(n_epochs):
 
     # 初始化损失和准确率
     running_loss = 0.0
-    running_correct = 0
+    running_correct = 0.0
+
+    # 初始化最优参数
+    best_running_correct = 0.0
 
     print("Epoch {}/{}".format(epoch, n_epochs))
     # 便于区分五次迭代
@@ -193,7 +235,7 @@ for epoch in range(n_epochs):
         # 预测值是否与训练值相等
         running_correct += torch.sum(pred == y_train.data)
 
-    testing_correct = 0
+    testing_correct = 0.0
 
     for data in data_loader_test:
         X_test, y_test = data
@@ -209,8 +251,11 @@ for epoch in range(n_epochs):
     print("Loss is:{:.4f}, Train Accuracy is:{:.4f}%, Test Accuracy is:{:.4f}".format(running_loss/len(data_train),100*running_correct/len(data_train),100*testing_correct/len(data_test)))
 
     # 在此处保留训练获得的权重
-    torch.save(model.state_dict(), './model.pth')
-    torch.save(optimizer.state_dict(), './optimizer.pth')
+    # 2022/9/30 新增保存最优权重功能
+    if running_correct > best_running_correct:
+        best_running_correct = running_correct
+        torch.save(model.state_dict(), './model.pth')
+        torch.save(optimizer.state_dict(), './optimizer.pth')
 
     # Loss_list.append(running_loss / (len(data_train)))
     # Accuracy_list.append(100 * running_correct / (len(data_train)))
@@ -226,7 +271,10 @@ for epoch in range(n_epochs):
     # y2 = Loss_list
     y2.append(running_loss / (len(data_train)))
     plt.subplot(2, 1, 1)
-    plt.plot(x1, y1, 'o-')
+    # plt.plot(x1, y1, 'o-')
+    # 绘制图形
+    plt.plot(x1, y1, linewidth=1, color="orange", marker="o", label="Mean value")
+
     plt.title('Test accuracy vs. epoches')
     plt.ylabel('Test accuracy')
     plt.subplot(2, 1, 2)
